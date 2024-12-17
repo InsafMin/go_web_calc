@@ -125,8 +125,29 @@ func routeHandler(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+func PanicMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if err := recover(); err != nil {
+				log.Printf("Panic: %v", err)
+				http.Error(w, "unknown error occurred", http.StatusInternalServerError)
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (a *Application) RunServer() error {
 	log.Println("starting server on port:", a.config.Addr)
-	http.HandleFunc("/api/v1/calculate", routeHandler(CalcHandler))
-	return http.ListenAndServe(":"+a.config.Addr, nil)
+	mux := http.NewServeMux()
+	calc := http.HandlerFunc(CalcHandler)
+
+	mux.Handle("/api/v1/calculate", routeHandler(calc))
+
+	handler := PanicMiddleware(mux)
+	err := http.ListenAndServe(":"+a.config.Addr, handler)
+	if err != nil {
+		return err
+	}
+	return nil
 }
